@@ -53,6 +53,7 @@ class MainActivity : Activity() {
         probe("tts.init") { startTts() }
         probe("navi") { startNavi() }
         probe("fused") { startFused() }
+        probe("service") { startForegroundService(android.content.Intent(this, ProbeService::class.java)) }
         handler.postDelayed(::readSignals, 5000)
     }
 
@@ -123,7 +124,7 @@ class MainActivity : Activity() {
                         navi.requestRoute(RouteInfo(latitude = 37.48544722, longitude = 127.03636666, displayLongitude = null, displayLatitude = null, poiName = "probe", poiId = "36khp37hh8gqcm5nqhe5", poiSubId = "0", address = "probe"))
                         log("navi route requested")
                     }
-                }, 8000)
+                }, 100000)
             },
             onFailed = { t -> log("navi connect FAIL $t") },
         )

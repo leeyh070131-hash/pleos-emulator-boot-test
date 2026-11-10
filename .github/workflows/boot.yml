@@ -114,6 +114,8 @@ jobs:
           done
           curl -s -m 10 "$VC/vehicle/state" > out/state.json || true
           "$ADB" exec-out screencap -p > out/2-driving.png || true
+          sleep 70
+          "$ADB" exec-out screencap -p > out/3-after-route.png || true
           "$ADB" shell dumpsys activity activities | grep -E 'ResumedActivity' > out/resumed.txt || true
           "$ADB" logcat -d > out/logcat.txt || true
           grep ' PROBE' out/logcat.txt | sed -E 's/^.*PROBE *: //' > out/probe.txt || true
