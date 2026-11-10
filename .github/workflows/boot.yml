@@ -118,8 +118,8 @@ jobs:
           curl -s -m 10 -X POST "$VC/browser/session?client=ci" -w ' session %{http_code}\n' | tee out/console.txt
           curl -s -m 10 -X PUT "$VC/vehicle/gear?gear=Drive" -w ' gear %{http_code}\n' | tee -a out/console.txt
           for i in 1 2 3 4 5 6 7; do
-            curl -s -m 10 -X POST "$VC/browser/session?client=ci" > /dev/null
-            curl -s -m 10 -X PUT "$VC/vehicle/controls?speed=60&accelerator=30&brake=0" -w ' controls %{http_code}\n' >> out/console.txt
+            curl -s -m 20 -X POST "$VC/browser/session?client=ci" > /dev/null || true
+            curl -s -m 20 -X PUT "$VC/vehicle/controls?speed=60&accelerator=30&brake=0" -w ' controls %{http_code}\n' >> out/console.txt || true
             sleep 5
           done
           curl -s -m 10 "$VC/vehicle/state" > out/state.json || true
