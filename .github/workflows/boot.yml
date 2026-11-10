@@ -102,12 +102,17 @@ jobs:
           "$ADB" shell am start -n test.probe/.MainActivity 2>&1 | tee out/start.txt
           sleep 40
           "$ADB" exec-out screencap -p > out/1-parked.png || true
-          "$ADB" root || true
-          sleep 5
-          # AOSP property ids: GEAR_SELECTION (D=8), PERF_VEHICLE_SPEED (m/s).
-          "$ADB" shell cmd car_service inject-vhal-event 0x11400400 8 2>&1 | tee out/inject.txt || true
-          "$ADB" shell cmd car_service inject-vhal-event 0x11600207 16.67 2>&1 | tee -a out/inject.txt || true
-          sleep 35
+          "$ADB" emu geo fix 126.31 33.46 2>&1 | tee out/geo.txt || true
+          "$ADB" forward tcp:8088 tcp:8088
+          VC=http://127.0.0.1:8088
+          curl -s -m 10 -X POST "$VC/browser/session?client=ci" -w ' session %{http_code}\n' | tee out/console.txt
+          curl -s -m 10 -X PUT "$VC/vehicle/gear?gear=Drive" -w ' gear %{http_code}\n' | tee -a out/console.txt
+          for i in 1 2 3 4 5 6 7; do
+            curl -s -m 10 -X POST "$VC/browser/session?client=ci" > /dev/null
+            curl -s -m 10 -X PUT "$VC/vehicle/controls?speed=60&accelerator=30&brake=0" -w ' controls %{http_code}\n' >> out/console.txt
+            sleep 5
+          done
+          curl -s -m 10 "$VC/vehicle/state" > out/state.json || true
           "$ADB" exec-out screencap -p > out/2-driving.png || true
           "$ADB" shell dumpsys activity activities | grep -E 'ResumedActivity' > out/resumed.txt || true
           "$ADB" logcat -d > out/logcat.txt || true

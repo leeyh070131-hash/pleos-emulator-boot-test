@@ -5,7 +5,12 @@ import ai.pleos.playground.location.fused.listener.FusedLocationListener
 import ai.pleos.playground.location.fused.model.LocationData
 import ai.pleos.playground.navi.constants.NaviErrorCode
 import ai.pleos.playground.navi.data.CurrentLocationInfo
+import ai.pleos.playground.navi.data.DestinationInfo
+import ai.pleos.playground.navi.data.RouteInfo
+import ai.pleos.playground.navi.data.RouteStartInfo
 import ai.pleos.playground.navi.data.TBTInfo
+import ai.pleos.playground.navi.data.TripInfo
+import ai.pleos.playground.navi.data.TripRequest
 import ai.pleos.playground.navi.helper.NaviHelper
 import ai.pleos.playground.navi.helper.listener.NaviHelperEventListener
 import ai.pleos.playground.tts.TextToSpeech
@@ -75,16 +80,19 @@ class MainActivity : Activity() {
 
     private fun startTts() {
         tts = TextToSpeech(applicationContext, Mode.ON_DEVICE)
-        tts.addEventListener(object : EventListener {
-            override fun onReady() = log("tts ready")
-            override fun onStart() = log("tts start")
-            override fun onUpdatedRms(rms: Double) = Unit
-            override fun onDone() = log("tts done")
-            override fun onStop() = log("tts stop")
-            override fun onError(errorType: ErrorType) = log("tts ERROR $errorType")
-        })
         tts.initialize(object : OnInitializeListener {
-            override fun onSuccess() { log("tts init ok"); tts.speak("시험 음성입니다.", true) }
+            override fun onSuccess() {
+                log("tts init ok")
+                tts.addEventListener(object : EventListener {
+                    override fun onReady() = log("tts ready")
+                    override fun onStart() = log("tts start")
+                    override fun onUpdatedRms(rms: Double) = Unit
+                    override fun onDone() = log("tts done")
+                    override fun onStop() = log("tts stop")
+                    override fun onError(errorType: ErrorType) = log("tts ERROR $errorType")
+                })
+                tts.speak("시험 음성입니다.", true)
+            }
             override fun onFailure(errorType: ErrorType) = log("tts init FAIL $errorType")
         })
     }
@@ -98,9 +106,24 @@ class MainActivity : Activity() {
                     override fun onCurrentLocationInfo(info: CurrentLocationInfo) = log("navi location=$info")
                     override fun onTBTInfo(info: List<TBTInfo>) = log("navi tbt=$info")
                     override fun onError(errorCode: NaviErrorCode) = log("navi ERROR $errorCode")
+                    override fun onRouteStarted(routeStartInfo: RouteStartInfo) = log("navi routeStarted=$routeStartInfo")
+                    override fun onRoutingCompleted() {
+                        log("navi routingCompleted")
+                        navi.getTBTInfo()
+                        navi.getDestinationInfo()
+                        navi.requestTrip(TripRequest(latitude = 37.48544722, longitude = 127.03636666, poiName = "probe", poiId = "", poiSubId = ""))
+                    }
+                    override fun onDestinationInfo(destinationInfo: DestinationInfo) = log("navi destination=$destinationInfo")
+                    override fun onTripInfo(tripInfo: TripInfo) = log("navi trip=$tripInfo")
                 })
                 navi.getCurrentLocationInfo()
                 navi.getTBTInfo()
+                handler.postDelayed({
+                    probe("navi.route") {
+                        navi.requestRoute(RouteInfo(latitude = 37.48544722, longitude = 127.03636666, displayLongitude = null, displayLatitude = null, poiName = "probe", poiId = "36khp37hh8gqcm5nqhe5", poiSubId = "0", address = "probe"))
+                        log("navi route requested")
+                    }
+                }, 8000)
             },
             onFailed = { t -> log("navi connect FAIL $t") },
         )
