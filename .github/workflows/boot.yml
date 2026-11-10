@@ -33,6 +33,16 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      - name: Create test speech
+        run: |
+          sudo apt-get update -q && sudo apt-get install -yq espeak-ng ffmpeg
+          espeak-ng -v ko -s 120 -w /tmp/speech.wav "가 볼래"
+          mkdir -p app/src/main/assets
+          ffmpeg -loglevel error -f lavfi -t 0.5 -i anullsrc=r=16000:cl=mono -i /tmp/speech.wav -f lavfi -t 1.5 -i anullsrc=r=16000:cl=mono \
+            -filter_complex "[1]aresample=16000,aformat=channel_layouts=mono[s];[0][s][2]concat=n=3:v=0:a=1" \
+            -ar 16000 -ac 1 -f s16le app/src/main/assets/test_audio.pcm
+          ls -l app/src/main/assets
+
       - name: Build app
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
