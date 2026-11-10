@@ -1,0 +1,108 @@
+name: boot-test
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      gpu:
+        description: Emulator -gpu mode
+        default: swiftshader_indirect
+
+jobs:
+  boot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      IMAGE_URL: https://nexus-playground.pleos.ai/repository/raw-releases/connect-avd/2.x/crp_car_emulator.zip
+      GPU_MODE: ${{ inputs.gpu || 'swiftshader_indirect' }}
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost
+          df -h /
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+
+      - name: Install emulator and Pleos image
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" emulator platform-tools > /dev/null
+          "$ANDROID_HOME/emulator/emulator" -version | head -1
+          curl -fsSL -o /tmp/image.zip "$IMAGE_URL"
+          unzip -q /tmp/image.zip -d /tmp/image
+          rm /tmp/image.zip
+          IMAGE_DIR=$(dirname "$(find /tmp/image -name system.img | head -1)")
+          ls -la "$IMAGE_DIR"
+          DEST="$ANDROID_HOME/system-images/android-34/pleos_car_emulator/x86_64"
+          mkdir -p "$(dirname "$DEST")"
+          mv "$IMAGE_DIR" "$DEST"
+          df -h /
+
+      - name: Create AVD
+        run: |
+          AVD="$HOME/.android/avd"
+          mkdir -p "$AVD/pleos.avd"
+          printf 'avd.ini.encoding=UTF-8\npath=%s/pleos.avd\ntarget=android-34\n' "$AVD" > "$AVD/pleos.ini"
+          cat > "$AVD/pleos.avd/config.ini" <<'EOF'
+          AvdId=pleos
+          abi.type=x86_64
+          hw.cpu.arch=x86_64
+          hw.cpu.ncore=2
+          hw.ramSize=4096
+          hw.gpu.enabled=yes
+          hw.lcd.width=1920
+          hw.lcd.height=1080
+          hw.lcd.density=160
+          hw.keyboard=yes
+          disk.dataPartition.size=6G
+          image.sysdir.1=system-images/android-34/pleos_car_emulator/x86_64/
+          tag.id=android-automotive
+          EOF
+          sed -i 's/^ *//' "$AVD/pleos.avd/config.ini"
+
+      - name: Boot
+        id: boot
+        run: |
+          mkdir -p out
+          nohup "$ANDROID_HOME/emulator/emulator" -avd pleos -no-window -no-audio -no-snapshot \
+            -no-boot-anim -gpu "$GPU_MODE" -verbose > out/emulator.log 2>&1 &
+          ADB="$ANDROID_HOME/platform-tools/adb"
+          for i in $(seq 1 60); do
+            sleep 30
+            state=$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+            echo "$((i / 2)) min: boot_completed=${state:-none}"
+            if [ "$state" = "1" ]; then echo "booted=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          done
+          echo "booted=false" >> "$GITHUB_OUTPUT"
+
+      - name: Inspect
+        if: always()
+        run: |
+          ADB="$ANDROID_HOME/platform-tools/adb"
+          sleep 60
+          "$ADB" exec-out screencap -p > out/screen.png || true
+          "$ADB" shell getprop > out/props.txt || true
+          "$ADB" shell pm list packages > out/packages.txt || true
+          "$ADB" logcat -d > out/logcat.txt || true
+          "$ADB" forward tcp:8088 tcp:8088 || true
+          curl -s -m 15 -o out/virtual-console.html -w 'Virtual Console HTTP %{http_code}\n' http://127.0.0.1:8088/ || true
+          grep -ciE 'pleos|42dot' out/packages.txt || true
+          grep -iE 'gpu|renderer|swiftshader' out/emulator.log | head -30 || true
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: boot-results
+          path: out
+          retention-days: 3
+
+      - name: Report
+        if: always()
+        run: test "${{ steps.boot.outputs.booted }}" = "true"
